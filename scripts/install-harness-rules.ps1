@@ -1,18 +1,20 @@
 ﻿<#
   install-harness-rules.ps1
   ----------------------------------------------------------------------------
-  把 Harness 工程化规则文档下载到当前项目的 doc\ 目录（Windows PowerShell 版）
+  把 Harness 工程化规则文档下载到当前项目的 docs\ 目录（Windows PowerShell 版）
 
   用法（本地文件模式）：
     powershell -NoProfile -ExecutionPolicy Bypass -File .\install-harness-rules.ps1
-    .\install-harness-rules.ps1 -Only new -Dir docs
 
   用法（远程一行，推荐：先落地再执行，绕开 iex 的编码不确定性）：
-    $u='https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.ps1'
+    $u='https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.ps1'
     $p="$env:TEMP\install-harness-rules.ps1"; iwr -UseBasicParsing $u -OutFile $p; & $p
 
-  远程一行模式下没法直接传命令行参数，改用环境变量：
-    HARNESS_ONLY / HARNESS_DIR / HARNESS_MIRROR / HARNESS_REF
+  不带参数运行时会先问一句「新建项目还是改造存量项目」，再下载对应的那一份。
+  落地目录固定为 docs\ —— 规则文档内部约定的路径就是它，不提供改目录的参数。
+
+  远程一行模式下没法直接传命令行参数，需要跳过询问时改用环境变量：
+    HARNESS_ONLY / HARNESS_MIRROR / HARNESS_REF
     HARNESS_OWNER / HARNESS_REPO / HARNESS_BASE_GITHUB / HARNESS_BASE_JSDELIVR
 
   Windows 上的两个坑，本脚本已处理：
@@ -26,7 +28,6 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Dir,
     [string]$Only,
     [string]$Mirror,
     [string]$Ref
@@ -37,14 +38,52 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
 # ---------- 参数：命令行 > 环境变量 > 默认值 ----------
-if (-not $Dir)    { if ($env:HARNESS_DIR)    { $Dir    = $env:HARNESS_DIR }    else { $Dir    = 'doc' } }
-if (-not $Only)   { if ($env:HARNESS_ONLY)   { $Only   = $env:HARNESS_ONLY }   else { $Only   = 'all' } }
+$Dir = 'docs'      # 固定，不提供改名
+if (-not $Only)   { if ($env:HARNESS_ONLY)   { $Only   = $env:HARNESS_ONLY } }
 if (-not $Mirror) { if ($env:HARNESS_MIRROR) { $Mirror = $env:HARNESS_MIRROR } else { $Mirror = 'auto' } }
 if (-not $Ref)    { if ($env:HARNESS_REF)    { $Ref    = $env:HARNESS_REF }    else { $Ref    = 'master' } }
 
 if ($env:HARNESS_OWNER) { $Owner = $env:HARNESS_OWNER } else { $Owner = 'Tairraos' }
 if ($env:HARNESS_REPO)  { $Repo  = $env:HARNESS_REPO }  else { $Repo  = 'harness-go' }
 $RemoteDir = 'rules'
+
+# ---------- 询问要哪一份 ----------
+function Select-Only {
+    $canAsk = $true
+    try { if ([Console]::IsInputRedirected) { $canAsk = $false } } catch { }
+
+    if (-not $canAsk) {
+        Write-Host '（无终端可询问，两份都下）'
+        return 'all'
+    }
+
+    Write-Host ''
+    Write-Host '这个项目属于哪种情况？' -ForegroundColor Cyan
+    Write-Host '  1) 新建项目 —— 从一个空仓库起步'
+    Write-Host '  2) 改造存量项目 —— 已有代码库'
+
+    $ans = ''
+    try {
+        $line = Read-Host -Prompt '输入 1 或 2（直接回车 = 两份都下）'
+        if ($null -ne $line) { $ans = $line.Trim() }
+    } catch {
+        Write-Host '（无法读取输入，两份都下）'
+        return 'all'
+    }
+
+    switch ($ans) {
+        '1'        { return 'new' }
+        '2'        { return 'existing' }
+        'new'      { return 'new' }
+        'existing' { return 'existing' }
+        ''         { return 'all' }
+        default    { Write-Host '  （没看懂，两份都下）'; return 'all' }
+    }
+}
+
+if (-not $Only) {
+    $Only = Select-Only
+}
 
 # ---------- 待下载清单 ----------
 $fileNew      = 'new-project-harness-rules.md'
