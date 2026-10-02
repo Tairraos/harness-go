@@ -5,7 +5,7 @@
 #   sh scripts/install-harness-rules.sh                      # 两份都下载到 ./doc
 #   sh scripts/install-harness-rules.sh --only new           # 只下载「新建项目」那份
 #   sh scripts/install-harness-rules.sh --only existing      # 只下载「改造存量项目」那份
-#   sh scripts/install-harness-rules.sh --dir docs           # 换个目录名
+#   sh scripts/install-harness-rules.sh --dir docs           # 换个落地目录名
 #
 # 远程执行（推荐，一条命令）：
 #   curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.sh | sh
@@ -22,7 +22,7 @@ REMOTE_DIR="rules"
 
 TARGET_DIR="doc"
 ONLY="all"
-MIRROR="auto"   # auto | github | jsdelivr
+MIRROR="auto"   # auto | github | ghproxy | jsdelivr
 
 # ---------- 参数解析 ----------
 while [ $# -gt 0 ]; do
@@ -38,11 +38,13 @@ while [ $# -gt 0 ]; do
   把 Harness 工程化规则文档下载到当前项目的 doc/ 目录。
 
 选项：
-  --dir <路径>     下载到哪个目录，默认 doc
+  --dir <路径>     落地目录，默认 doc
   --only <选择>    下载哪几份：all（默认）/ new / existing
                      new      = 新建项目规则
                      existing = 存量项目改造规则
-  --mirror <源>    下载源：auto（默认，GitHub 失败自动退 jsDelivr）/ github / jsdelivr
+  --mirror <源>    下载源：auto（默认，按序自动降级）/ github / ghproxy / jsdelivr
+                     auto 依次尝试：GitHub raw → ghproxy.net → gh-proxy.com
+                                   → gcore.jsdelivr → cdn.jsdelivr
   --ref <分支>     文档所在的 Git ref，默认 master
   -h, --help       显示这段帮助
 
@@ -59,6 +61,10 @@ case "$ONLY" in
   all|new|existing) ;;
   *) echo "--only 只能是 all / new / existing，收到：$ONLY" >&2; exit 2 ;;
 esac
+case "$MIRROR" in
+  auto|github|ghproxy|jsdelivr) ;;
+  *) echo "--mirror 只能是 auto / github / ghproxy / jsdelivr，收到：$MIRROR" >&2; exit 2 ;;
+esac
 
 # ---------- 依赖检查 ----------
 if ! command -v curl >/dev/null 2>&1; then
@@ -67,48 +73,56 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 # ---------- 待下载清单 ----------
-# new      → 新建项目（空仓库起步）
-# existing → 改造存量项目（已有代码库）
-FILES_NEW="new-project-harness-rules.md"
-FILES_EXISTING="turn-project-to-harness-rules.md"
+FILE_NEW="new-project-harness-rules.md"        # 新建项目（空仓库起步）
+FILE_EXISTING="turn-project-to-harness-rules.md"  # 改造存量项目（已有代码库）
 
-LIST=""
 case "$ONLY" in
-  all)      LIST="$FILES_NEW $FILES_EXISTING" ;;
-  new)      LIST="$FILES_NEW" ;;
-  existing) LIST="$FILES_EXISTING" ;;
+  all)      LIST="$FILE_NEW $FILE_EXISTING" ;;
+  new)      LIST="$FILE_NEW" ;;
+  existing) LIST="$FILE_EXISTING" ;;
 esac
 
-# ---------- 下载源 ----------
-# 默认指向 GitHub；HARNESS_BASE_* 可覆盖（fork 或本地自测时用）
-GITHUB_BASE="${HARNESS_BASE_GITHUB:-https://raw.githubusercontent.com/$OWNER/$REPO/$REF/$REMOTE_DIR}"
-JSDELIVR_BASE="${HARNESS_BASE_JSDELIVR:-https://cdn.jsdelivr.net/gh/$OWNER/$REPO@$REF/$REMOTE_DIR}"
+# ---------- 下载源（按序降级） ----------
+# 实测：中国大陆直连 raw.githubusercontent.com 常被拦、cdn.jsdelivr.net 也可能不通，
+# 故 auto 模式挂多源依次重试。ghproxy 类为实时回源，比 jsDelivr 有缓存更不易拿到旧版。
+GH_RAW="https://raw.githubusercontent.com/$OWNER/$REPO/$REF/$REMOTE_DIR"
+GH_PROXY_NET="https://ghproxy.net/https://raw.githubusercontent.com/$OWNER/$REPO/$REF/$REMOTE_DIR"
+GH_PROXY_COM="https://gh-proxy.com/https://raw.githubusercontent.com/$OWNER/$REPO/$REF/$REMOTE_DIR"
+JSD_GCORE="https://gcore.jsdelivr.net/gh/$OWNER/$REPO@$REF/$REMOTE_DIR"
+JSD_CDN="https://cdn.jsdelivr.net/gh/$OWNER/$REPO@$REF/$REMOTE_DIR"
+
+# 允许环境变量整体覆盖（fork 或自测时用）
+GH_RAW="${HARNESS_BASE_GITHUB:-$GH_RAW}"
+JSD_GCORE="${HARNESS_BASE_JSDELIVR:-$JSD_GCORE}"
+
+case "$MIRROR" in
+  github)   SOURCES="github raw|$GH_RAW" ;;
+  ghproxy)  SOURCES="ghproxy.net|$GH_PROXY_NET gh-proxy.com|$GH_PROXY_COM" ;;
+  jsdelivr) SOURCES="gcore.jsdelivr|$JSD_GCORE cdn.jsdelivr|$JSD_CDN" ;;
+  auto)     SOURCES="github raw|$GH_RAW ghproxy.net|$GH_PROXY_NET gh-proxy.com|$GH_PROXY_COM gcore.jsdelivr|$JSD_GCORE cdn.jsdelivr|$JSD_CDN" ;;
+esac
 
 # fetch <文件名> <输出路径>
-# auto 模式下先试 GitHub，失败再退 jsDelivr 镜像
+# 依次尝试各源，命中即返回；全部失败返回 1
 fetch() {
   _name="$1"
   _out="$2"
+  _label=""
 
-  case "$MIRROR" in
-    github)
-      curl -fsSL --retry 2 --connect-timeout 15 "$GITHUB_BASE/$_name" -o "$_out"
-      ;;
-    jsdelivr)
-      curl -fsSL --retry 2 --connect-timeout 15 "$JSDELIVR_BASE/$_name" -o "$_out"
-      ;;
-    auto)
-      if curl -fsSL --retry 1 --connect-timeout 10 "$GITHUB_BASE/$_name" -o "$_out" 2>/dev/null; then
-        return 0
-      fi
-      echo "    GitHub raw 不通，改用 jsDelivr 镜像重试…" >&2
-      curl -fsSL --retry 2 --connect-timeout 15 "$JSDELIVR_BASE/$_name" -o "$_out"
-      ;;
-    *)
-      echo "--mirror 只能是 auto / github / jsdelivr，收到：$MIRROR" >&2
-      exit 2
-      ;;
-  esac
+  for _s in $SOURCES; do
+    _host="${_s%%|*}"
+    _base="${_s#*|}"
+    if curl -fsSL --retry 1 --connect-timeout 10 --max-time 180 "$_base/$_name" -o "$_out" 2>/dev/null; then
+      _label="$_host"
+      break
+    fi
+  done
+
+  if [ -z "$_label" ]; then
+    return 1
+  fi
+  FETCH_VIA="$_label"
+  return 0
 }
 
 # ---------- 执行 ----------
@@ -121,9 +135,20 @@ OK_COUNT=0
 for f in $LIST; do
   out="$TARGET_DIR/$f"
   printf '  · %s ... ' "$f"
-  fetch "$f" "$out"
 
-  # 落盘自检：非空 + 是一份 Markdown 标题开头的规则文档
+  if ! fetch "$f" "$out"; then
+    echo "失败"
+    echo "" >&2
+    echo "所有下载源都不可用。可以手动试这几个地址：" >&2
+    for _s in $SOURCES; do
+      echo "  ${_s#*|}/$f" >&2
+    done
+    echo "" >&2
+    echo "或直接 git clone https://github.com/$OWNER/$REPO.git 后自行复制。" >&2
+    exit 1
+  fi
+
+  # 落盘自检：非空 + 是一份 Markdown 标题开头的规则文档，防止把 404 页面存成文档
   if [ ! -s "$out" ]; then
     echo "失败（文件为空）" >&2
     exit 1
@@ -133,8 +158,8 @@ for f in $LIST; do
     exit 1
   fi
 
-  size=$(wc -c < "$out" | tr -d ' ')
-  echo "OK（${size} 字节）"
+  _size=$(wc -c < "$out" | tr -d ' ')
+  echo "OK（${_size} 字节，via ${FETCH_VIA}）"
   OK_COUNT=$((OK_COUNT + 1))
 done
 
@@ -147,16 +172,17 @@ echo "接下来："
 if [ "$ONLY" != "existing" ]; then
   cat <<EOF
   【新建项目】新开一个 AI 会话，把这句话发给它：
-    阅读 $TARGET_DIR/${FILES_NEW}，严格按规则体系从 Day 0 搭建这个项目。
-    先处理我的需求（§3.2）：复述需求给我确认，再提取技术栈；
-    语言或框架不明确时必须问我，不要自己假设。
-    技术栈定了再做 §3.3 框架确认；若为 Tauri，必须按 §3.4 逐条问我，问完再动手。
+    阅读 $TARGET_DIR/${FILE_NEW}，严格按规则体系从 Day 0 搭建这个项目。
+    第一步先处理我的需求（§3.2）：把需求复述给我确认，再提取技术栈；
+    语言或框架不明确时必须通过交互向我确认，不要自己假设。
+    技术栈定了再做 §3.3 框架确认；若确认为 Tauri，必须按 §3.4 逐条问我，问完再动手。
 EOF
 fi
 if [ "$ONLY" != "new" ]; then
   cat <<EOF
   【改造存量项目】新开一个 AI 会话，把这句话发给它：
-    阅读 $TARGET_DIR/${FILES_EXISTING}，严格按其第 5 节五阶段流程改造本项目。
-    先只做阶段 1：全量扫描并输出改造计划，不要修改任何业务代码，等我确认计划。
+    阅读 $TARGET_DIR/${FILE_EXISTING}，严格按其第 5 节五阶段流程对本项目执行改造。
+    先只做阶段 1：全量扫描并输出改造计划到 docs/exec-plans/active/，把问题清单写入
+    docs/exec-plans/tech-debt-tracker.md。不要修改任何业务代码，等我确认计划。
 EOF
 fi
