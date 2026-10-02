@@ -49,6 +49,12 @@ curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/
 
 它会在当前目录创建 `doc/`，把两份文档下载进去，并打印出可以直接复制给 AI 的开场提示词。
 
+**如果你在中国大陆**：`raw.githubusercontent.com` 通常直接连不上（含上面这条命令本身）。改用这版，脚本会自动挑一个通的源：
+
+```bash
+curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.sh | sh
+```
+
 只要其中一份：
 
 ```bash
@@ -79,21 +85,38 @@ curl -fsSL -o doc/turn-project-to-harness-rules.md \
   https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/turn-project-to-harness-rules.md
 ```
 
-### 方式 3：国内网络慢——走 jsDelivr 镜像
+### 方式 3：中国大陆网络——换镜像源
 
-GitHub raw 直连不稳时，换成 jsDelivr CDN：
+`raw.githubusercontent.com` 和 `cdn.jsdelivr.net` 在国内常被拦。下面是**在杭州实测过**的可达性结果：
+
+| 源 | 地址形态 | 实测 |
+|---|---|---|
+| GitHub raw | `raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✗ SSL 握手失败 |
+| jsDelivr（cdn） | `cdn.jsdelivr.net/gh/Tairraos/harness-go@master/...` | ✗ 不通 |
+| jsDelivr（fastly） | `fastly.jsdelivr.net/gh/...` | ✗ 不通 |
+| **jsDelivr（gcore）** | `gcore.jsdelivr.net/gh/Tairraos/harness-go@master/...` | ✓ 200，字节数正确 |
+| **ghproxy.net** | `ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✓ 200，字节数正确 |
+| **gh-proxy.com** | `gh-proxy.com/https://raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✓ 200，字节数正确 |
+
+可用的一条命令（走 ghproxy.net 实时回源）：
 
 ```bash
 mkdir -p doc
 curl -fsSL -o doc/new-project-harness-rules.md \
-  https://cdn.jsdelivr.net/gh/Tairraos/harness-go@master/rules/new-project-harness-rules.md
+  https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/new-project-harness-rules.md
 curl -fsSL -o doc/turn-project-to-harness-rules.md \
-  https://cdn.jsdelivr.net/gh/Tairraos/harness-go@master/rules/turn-project-to-harness-rules.md
+  https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/turn-project-to-harness-rules.md
 ```
 
-脚本默认就是**先试 GitHub、失败自动退 jsDelivr**，不用手动切；想强制走某一侧加 `--mirror github` 或 `--mirror jsdelivr`。
+**脚本默认 `--mirror auto`**，按下面顺序依次重试，命中即停，不用手动切：
 
-> jsDelivr 对 `@master` 有 CDN 缓存（最长约 12 小时），刚更新完文档可能拿到旧版；要立刻生效就用 GitHub raw，或把 `@master` 换成 commit hash / tag。
+> GitHub raw → ghproxy.net → gh-proxy.com → gcore.jsdelivr → cdn.jsdelivr
+
+想强制走某个源：`--mirror github` / `ghproxy` / `jsdelivr`。
+
+> **关于新鲜度**：ghproxy 类是实时回源，拿到的永远是最新版；jsDelivr 对 `@master` 有 CDN 缓存（最长约 12 小时），刚推完文档可能拿到旧版。所以缓存源排在实时源之后。
+>
+> **关于可信度**：第三方代理不是官方渠道。不放心的可以 `git clone` 后自己核对 —— 文档内容对下载源没有任何依赖，任何一个源拿到的字节都与本仓库 `rules/` 下的母本完全一致（脚本每次下载都会做大小与 Markdown 结构自检）。
 
 ### 方式 4：整仓 clone
 
@@ -191,7 +214,7 @@ harness-go/
 │   ├── new-project-harness-rules.md     #   新建项目
 │   └── turn-project-to-harness-rules.md #   存量项目改造
 └── scripts/
-    └── install-harness-rules.sh         # 一键下载器：拉取规则 → 建 doc/ → 落盘
+    └── install-harness-rules.sh         # 一键下载器：多源降级拉取 → 建 doc/ → 自检落盘
 ```
 
 ---
