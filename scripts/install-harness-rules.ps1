@@ -49,8 +49,12 @@ $RemoteDir = 'rules'
 
 # ---------- 询问要哪一份 ----------
 function Select-Only {
+    # 输入或输出任一被重定向就不问：问了也读不到答案，或者答案提示对方看不见。
+    # 不做询问时静默下两份，绝不挂在等待输入上。
     $canAsk = $true
-    try { if ([Console]::IsInputRedirected) { $canAsk = $false } } catch { }
+    try {
+        if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) { $canAsk = $false }
+    } catch { }
 
     if (-not $canAsk) {
         Write-Host '（无终端可询问，两份都下）'

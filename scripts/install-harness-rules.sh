@@ -66,9 +66,12 @@ FILE_EXISTING="turn-project-to-harness-rules.md"  # 改造存量项目（已有�
 # 注意：curl | sh 时 stdin 是脚本自身的管道，不能直接 read，必须走 /dev/tty。
 # 没有控制终端（CI、输出被重定向）时不做询问，默认两份都下。
 ask_only() {
-  # 必须真正打开 /dev/tty 才算数：`[ -r /dev/tty ]` 走的是 access()，
-  # 只看设备节点的权限位，在没有控制终端的 CI / cron 里同样返回真。
-  if ! { : < /dev/tty; } 2>/dev/null; then
+  # 两个条件都要满足才询问：
+  #   1) stdout 是终端 —— 否则提示会被写进日志文件，人根本看不到
+  #   2) /dev/tty 能真的打开 —— `[ -r /dev/tty ]` 走的是 access()，
+  #      只看设备节点权限位，在没有控制终端的 CI / cron 里同样返回真
+  # 缺任一条件就静默下两份：宁可少问一句，也不能对着没人看的终端死等输入。
+  if [ ! -t 1 ] || ! { : < /dev/tty; } 2>/dev/null; then
     echo "（无终端可询问，两份都下）"
     ONLY="all"
     return 0
