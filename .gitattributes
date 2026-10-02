@@ -1,0 +1,12 @@
+# 行尾与编码策略
+#
+# Windows 脚本必须按原样字节入库：
+#   - .ps1 需要 UTF-8 with BOM，否则 Windows PowerShell 5.1 读中文会乱码
+#   - .cmd 需要 CRLF 且不能有 BOM，否则 CMD 可能解析异常或把 BOM 当命令执行
+# 任何行尾/编码转换都会破坏这两点，所以标记为 -text（不做任何规范化）。
+*.ps1 -text
+*.cmd -text
+
+# 其余为普通文本，统一 LF
+*.sh   text eol=lf
+*.md   text eol=lf
