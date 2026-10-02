@@ -1,0 +1,5 @@
+# 本项目的工作区数据（记忆、缓存等），不入库
+.workbuddy/
+
+# macOS
+.DS_Store
