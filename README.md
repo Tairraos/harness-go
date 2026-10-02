@@ -49,11 +49,7 @@ curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/
 
 它会在当前目录创建 `doc/`，把两份文档下载进去，并打印出可以直接复制给 AI 的开场提示词。
 
-**如果你在中国大陆**：`raw.githubusercontent.com` 通常直接连不上（含上面这条命令本身）。改用这版，脚本会自动挑一个通的源：
-
-```bash
-curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.sh | sh
-```
+> 脚本内置多源降级：某个源不可达会自动换下一个，不用手动干预；要强制指定用 `--mirror`（`--help` 列了全部参数）。
 
 只要其中一份：
 
@@ -78,18 +74,16 @@ curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/
 **PowerShell**（Win10/11 自带 5.1，或 PowerShell 7）——先落地再执行：
 
 ```powershell
-$u='https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.ps1'
+$u='https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.ps1'
 $p="$env:TEMP\install-harness-rules.ps1"; iwr -UseBasicParsing $u -OutFile $p; & $p
 ```
-
-海外网络把 `ghproxy.net/https://` 前缀去掉即可。
 
 > 这里**故意不用** `irm ... | iex`：`iex` 拿到的是一串字符串，而 `.ps1` 带 UTF-8 BOM，走字符串执行会有解码不确定性。先 `-OutFile` 落地再 `&` 执行，BOM 由文件读取环节处理，稳。
 
 **CMD**——下载启动器再执行：
 
 ```cmd
-curl.exe -fsSL -o "%TEMP%\install-harness-rules.cmd" https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.cmd && "%TEMP%\install-harness-rules.cmd"
+curl.exe -fsSL -o "%TEMP%\install-harness-rules.cmd" https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.cmd && "%TEMP%\install-harness-rules.cmd"
 ```
 
 **带参数**（PowerShell 用单横线 `-Only`，不是 `--only`）：
@@ -129,40 +123,7 @@ curl -fsSL -o doc/turn-project-to-harness-rules.md \
   https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/turn-project-to-harness-rules.md
 ```
 
-### 方式 4：中国大陆网络——换镜像源
-
-`raw.githubusercontent.com` 和 `cdn.jsdelivr.net` 在国内常被拦。下面是**在杭州实测过**的可达性结果：
-
-| 源 | 地址形态 | 实测 |
-|---|---|---|
-| GitHub raw | `raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✗ SSL 握手失败 |
-| jsDelivr（cdn） | `cdn.jsdelivr.net/gh/Tairraos/harness-go@master/...` | ✗ 不通 |
-| jsDelivr（fastly） | `fastly.jsdelivr.net/gh/...` | ✗ 不通 |
-| **jsDelivr（gcore）** | `gcore.jsdelivr.net/gh/Tairraos/harness-go@master/...` | ✓ 200，字节数正确 |
-| **ghproxy.net** | `ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✓ 200，字节数正确 |
-| **gh-proxy.com** | `gh-proxy.com/https://raw.githubusercontent.com/Tairraos/harness-go/master/...` | ✓ 200，字节数正确 |
-
-可用的一条命令（走 ghproxy.net 实时回源）：
-
-```bash
-mkdir -p doc
-curl -fsSL -o doc/new-project-harness-rules.md \
-  https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/new-project-harness-rules.md
-curl -fsSL -o doc/turn-project-to-harness-rules.md \
-  https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/turn-project-to-harness-rules.md
-```
-
-**脚本默认 `--mirror auto`**，按下面顺序依次重试，命中即停，不用手动切：
-
-> GitHub raw → ghproxy.net → gh-proxy.com → gcore.jsdelivr → cdn.jsdelivr
-
-想强制走某个源：`--mirror github` / `ghproxy` / `jsdelivr`。
-
-> **关于新鲜度**：ghproxy 类是实时回源，拿到的永远是最新版；jsDelivr 对 `@master` 有 CDN 缓存（最长约 12 小时），刚推完文档可能拿到旧版。所以缓存源排在实时源之后。
->
-> **关于可信度**：第三方代理不是官方渠道。不放心的可以 `git clone` 后自己核对 —— 文档内容对下载源没有任何依赖，任何一个源拿到的字节都与本仓库 `rules/` 下的母本完全一致（脚本每次下载都会做大小与 Markdown 结构自检）。
-
-### 方式 5：整仓 clone
+### 方式 4：整仓 clone
 
 ```bash
 git clone https://github.com/Tairraos/harness-go.git
