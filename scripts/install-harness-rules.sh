@@ -1,14 +1,14 @@
 #!/bin/sh
-# install-harness-rules.sh — 把 Harness 工程化规则文档下载到当前项目的 doc/ 目录
+# install-harness-rules.sh — 把 Harness 工程化规则文档下载到当前项目的 docs/ 目录
 #
 # 用法：
-#   sh scripts/install-harness-rules.sh                      # 两份都下载到 ./doc
-#   sh scripts/install-harness-rules.sh --only new           # 只下载「新建项目」那份
-#   sh scripts/install-harness-rules.sh --only existing      # 只下载「改造存量项目」那份
-#   sh scripts/install-harness-rules.sh --dir docs           # 换个落地目录名
+#   sh scripts/install-harness-rules.sh               # 问你「新建还是改造」，再下载到 ./docs
+#   sh scripts/install-harness-rules.sh --only new    # 跳过询问，直接下「新建项目」那份
 #
 # 远程执行（推荐，一条命令）：
 #   curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.sh | sh
+#
+# 落地目录固定为 docs/ —— 规则文档内部约定的路径就是它，不提供改目录的选项。
 #
 # 依赖：curl（macOS / Linux 自带）
 
@@ -20,51 +20,37 @@ REPO="${HARNESS_REPO:-harness-go}"
 REF="${HARNESS_REF:-master}"
 REMOTE_DIR="rules"
 
-TARGET_DIR="doc"
-ONLY="all"
-MIRROR="auto"   # auto | github | ghproxy | jsdelivr
+TARGET_DIR="docs"          # 固定，不提供改名
+ONLY="${HARNESS_ONLY:-}"   # 空 = 稍后询问；new / existing / all
+MIRROR="${HARNESS_MIRROR:-auto}"   # auto | github | ghproxy | jsdelivr
 
 # ---------- 参数解析 ----------
 while [ $# -gt 0 ]; do
   case "$1" in
-    --dir)    TARGET_DIR="$2"; shift 2 ;;
-    --only)   ONLY="$2";       shift 2 ;;
-    --mirror) MIRROR="$2";     shift 2 ;;
-    --ref)    REF="$2";        shift 2 ;;
+    --only)   ONLY="$2";   shift 2 ;;
+    --mirror) MIRROR="$2"; shift 2 ;;
+    --ref)    REF="$2";    shift 2 ;;
     -h|--help)
       cat <<'USAGE'
 用法：sh install-harness-rules.sh [选项]
 
-  把 Harness 工程化规则文档下载到当前项目的 doc/ 目录。
+  把 Harness 工程化规则文档下载到当前项目的 docs/ 目录。
+  不带选项时会先问你一句「新建项目还是改造存量项目」，再下载对应的那一份。
 
 选项：
-  --dir <路径>     落地目录，默认 doc
-  --only <选择>    下载哪几份：all（默认）/ new / existing
-                     new      = 新建项目规则
-                     existing = 存量项目改造规则
+  --only <选择>    跳过询问，直接指定：new（新建项目）/ existing（改造存量）/ all（两份）
   --mirror <源>    下载源：auto（默认，按序自动降级）/ github / ghproxy / jsdelivr
-                     auto 依次尝试：GitHub raw → ghproxy.net → gh-proxy.com
-                                   → gcore.jsdelivr → cdn.jsdelivr
   --ref <分支>     文档所在的 Git ref，默认 master
   -h, --help       显示这段帮助
 
 示例：
   sh install-harness-rules.sh
-  sh install-harness-rules.sh --only new --dir docs
+  sh install-harness-rules.sh --only existing
 USAGE
       exit 0 ;;
     *) echo "未知参数：$1（用 --help 看用法）" >&2; exit 2 ;;
   esac
 done
-
-case "$ONLY" in
-  all|new|existing) ;;
-  *) echo "--only 只能是 all / new / existing，收到：$ONLY" >&2; exit 2 ;;
-esac
-case "$MIRROR" in
-  auto|github|ghproxy|jsdelivr) ;;
-  *) echo "--mirror 只能是 auto / github / ghproxy / jsdelivr，收到：$MIRROR" >&2; exit 2 ;;
-esac
 
 # ---------- 依赖检查 ----------
 if ! command -v curl >/dev/null 2>&1; then
@@ -73,8 +59,49 @@ if ! command -v curl >/dev/null 2>&1; then
 fi
 
 # ---------- 待下载清单 ----------
-FILE_NEW="new-project-harness-rules.md"        # 新建项目（空仓库起步）
+FILE_NEW="new-project-harness-rules.md"           # 新建项目（空仓库起步）
 FILE_EXISTING="turn-project-to-harness-rules.md"  # 改造存量项目（已有代码库）
+
+# ---------- 询问要哪一份 ----------
+# 注意：curl | sh 时 stdin 是脚本自身的管道，不能直接 read，必须走 /dev/tty。
+# 没有控制终端（CI、输出被重定向）时不做询问，默认两份都下。
+ask_only() {
+  # 必须真正打开 /dev/tty 才算数：`[ -r /dev/tty ]` 走的是 access()，
+  # 只看设备节点的权限位，在没有控制终端的 CI / cron 里同样返回真。
+  if ! { : < /dev/tty; } 2>/dev/null; then
+    echo "（无终端可询问，两份都下）"
+    ONLY="all"
+    return 0
+  fi
+
+  printf '\n这个项目属于哪种情况？\n'
+  printf '  1) 新建项目 —— 从一个空仓库起步\n'
+  printf '  2) 改造存量项目 —— 已有代码库\n'
+  printf '输入 1 或 2（直接回车 = 两份都下）：'
+
+  _ans=$( ( read -r _line < /dev/tty && printf '%s' "$_line" ) 2>/dev/null ) || _ans=""
+
+  case "$_ans" in
+    1|new)      ONLY="new" ;;
+    2|existing) ONLY="existing" ;;
+    "")         ONLY="all" ;;
+    *)          ONLY="all"; printf '\n  （没看懂，两份都下）' ;;
+  esac
+  printf '\n'
+}
+
+if [ -z "$ONLY" ]; then
+  ask_only
+fi
+
+case "$ONLY" in
+  all|new|existing) ;;
+  *) echo "--only 只能是 all / new / existing，收到：${ONLY}" >&2; exit 2 ;;
+esac
+case "$MIRROR" in
+  auto|github|ghproxy|jsdelivr) ;;
+  *) echo "--mirror 只能是 auto / github / ghproxy / jsdelivr，收到：${MIRROR}" >&2; exit 2 ;;
+esac
 
 case "$ONLY" in
   all)      LIST="$FILE_NEW $FILE_EXISTING" ;;
