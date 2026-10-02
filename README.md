@@ -71,7 +71,51 @@ curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/
 curl -fsSL https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.sh | sh -s -- --dir docs
 ```
 
-### 方式 2：纯 curl，不跑脚本
+### 方式 2：Windows（PowerShell / CMD）
+
+`install-harness-rules.sh` 是 sh 脚本，Windows 原生 shell 跑不了；而 PowerShell 里 `curl` 只是 `Invoke-WebRequest` 的别名（**不是真的 curl**），照搬 shell 命令必错。所以 Windows 单独给了两个脚本：
+
+**PowerShell**（Win10/11 自带 5.1，或 PowerShell 7）——先落地再执行：
+
+```powershell
+$u='https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.ps1'
+$p="$env:TEMP\install-harness-rules.ps1"; iwr -UseBasicParsing $u -OutFile $p; & $p
+```
+
+海外网络把 `ghproxy.net/https://` 前缀去掉即可。
+
+> 这里**故意不用** `irm ... | iex`：`iex` 拿到的是一串字符串，而 `.ps1` 带 UTF-8 BOM，走字符串执行会有解码不确定性。先 `-OutFile` 落地再 `&` 执行，BOM 由文件读取环节处理，稳。
+
+**CMD**——下载启动器再执行：
+
+```cmd
+curl.exe -fsSL -o "%TEMP%\install-harness-rules.cmd" https://ghproxy.net/https://raw.githubusercontent.com/Tairraos/harness-go/master/scripts/install-harness-rules.cmd && "%TEMP%\install-harness-rules.cmd"
+```
+
+**带参数**（PowerShell 用单横线 `-Only`，不是 `--only`）：
+
+```powershell
+.\install-harness-rules.ps1 -Only new -Dir docs
+```
+
+远程一行模式传不了参数，改用环境变量：
+
+```powershell
+$env:HARNESS_ONLY='new'; $env:HARNESS_DIR='docs'
+$p="$env:TEMP\install-harness-rules.ps1"; iwr -UseBasicParsing $u -OutFile $p; & $p
+```
+
+**被执行策略拦住**时加 `-ExecutionPolicy Bypass`：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\install-harness-rules.ps1
+```
+
+**用 Git Bash 或 WSL 的话**，直接用 `install-harness-rules.sh`，与 macOS / Linux 完全一致。
+
+> ⚠️ **两个 Windows 脚本尚未在真机 Windows 上回归**（编写环境是 macOS，手上没有 Windows）。已按已知规范规避了主要坑：`.ps1` 用 UTF-8 with BOM + CRLF、避开「变量紧跟中文」的解析坑、不依赖 `curl` 别名；`.cmd` 保持**纯 ASCII**（CMD 按系统 ANSI 代码页解析 .bat/.cmd，文件里写 UTF-8 中文极易乱码），中文输出统一交给 `.ps1`。如遇问题请提 issue。
+
+### 方式 3：纯 curl，不跑脚本
 
 ```bash
 mkdir -p doc
@@ -85,7 +129,7 @@ curl -fsSL -o doc/turn-project-to-harness-rules.md \
   https://raw.githubusercontent.com/Tairraos/harness-go/master/rules/turn-project-to-harness-rules.md
 ```
 
-### 方式 3：中国大陆网络——换镜像源
+### 方式 4：中国大陆网络——换镜像源
 
 `raw.githubusercontent.com` 和 `cdn.jsdelivr.net` 在国内常被拦。下面是**在杭州实测过**的可达性结果：
 
@@ -118,7 +162,7 @@ curl -fsSL -o doc/turn-project-to-harness-rules.md \
 >
 > **关于可信度**：第三方代理不是官方渠道。不放心的可以 `git clone` 后自己核对 —— 文档内容对下载源没有任何依赖，任何一个源拿到的字节都与本仓库 `rules/` 下的母本完全一致（脚本每次下载都会做大小与 Markdown 结构自检）。
 
-### 方式 4：整仓 clone
+### 方式 5：整仓 clone
 
 ```bash
 git clone https://github.com/Tairraos/harness-go.git
@@ -213,8 +257,10 @@ harness-go/
 ├── rules/                               # 母本（分发源，不要手改已分发的副本）
 │   ├── new-project-harness-rules.md     #   新建项目
 │   └── turn-project-to-harness-rules.md #   存量项目改造
-└── scripts/
-    └── install-harness-rules.sh         # 一键下载器：多源降级拉取 → 建 doc/ → 自检落盘
+└── scripts/                             # 三个平台各一份，功能一致
+    ├── install-harness-rules.sh         #   macOS / Linux / Git Bash / WSL
+    ├── install-harness-rules.ps1        #   Windows PowerShell（UTF-8 with BOM）
+    └── install-harness-rules.cmd        #   Windows CMD 启动器（纯 ASCII，转调 .ps1）
 ```
 
 ---
