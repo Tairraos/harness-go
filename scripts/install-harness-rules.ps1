@@ -118,15 +118,15 @@ if ($env:HARNESS_BASE_JSDELIVR) { $jsdGcoreBase = $env:HARNESS_BASE_JSDELIVR }
 
 switch ($Mirror) {
     'github'   { $sources = @('github raw|'      + $rawBase) }
-    'ghproxy'  { $sources = @('ghproxy.net|'     + $gpNetBase,
-                              'gh-proxy.com|'    + $gpComBase) }
-    'jsdelivr' { $sources = @('gcore.jsdelivr|'  + $jsdGcoreBase,
-                              'cdn.jsdelivr|'    + $jsdCdnBase) }
-    'auto'     { $sources = @('github raw|'      + $rawBase,
-                              'ghproxy.net|'     + $gpNetBase,
-                              'gh-proxy.com|'    + $gpComBase,
-                              'gcore.jsdelivr|'  + $jsdGcoreBase,
-                              'cdn.jsdelivr|'    + $jsdCdnBase) }
+    'ghproxy'  { $sources = @(('ghproxy.net|'     + $gpNetBase),
+                              ('gh-proxy.com|'    + $gpComBase)) }
+    'jsdelivr' { $sources = @(('gcore.jsdelivr|'  + $jsdGcoreBase),
+                              ('cdn.jsdelivr|'    + $jsdCdnBase)) }
+    'auto'     { $sources = @(('github raw|'      + $rawBase),
+                              ('ghproxy.net|'     + $gpNetBase),
+                              ('gh-proxy.com|'    + $gpComBase),
+                              ('gcore.jsdelivr|'  + $jsdGcoreBase),
+                              ('cdn.jsdelivr|'    + $jsdCdnBase)) }
     default    { throw ('--mirror 只能是 auto / github / ghproxy / jsdelivr，收到：' + $Mirror) }
 }
 
